@@ -30,6 +30,12 @@ class Agent(object):
         self._dijkstra_output = None
         self._unweighted_distance = None
 
+        # Q-Learning variables
+        self.q_table = np.zeros((16, 4))  # 16 states, 4 actions
+        self.alpha = 0.1
+        self.gamma = 0.9
+        self.epsilon = 0.2
+
     def act(self, world: World) -> bool:
         """
         Makes the agent act.
@@ -135,3 +141,80 @@ class Agent(object):
             # get the parking lot that's closest to the destination if there are no lots sufficiently close to the destination.
             self.target_lot = [iii for iii in self._street_bfo if world.is_parking_lot(iii)][0]
             print(f"[{datetime.datetime.now().astimezone()}] Found compromise lot at {self.target_lot}.")
+
+    # This function chooses a random direction depnding on the Q table
+    def _choose_action(self):
+        if np.random.rand() < self.epsilon: 
+            return np.random.randint(0, 4) # Pick a random direction
+        return np.argmax(self.q_table[self.current_pos]) # Pick the best known option
+    
+    # This function has the agent takes an action depending on input
+    def _take_action(self, action):
+        row, col = divmod(self.current_pos, 4)
+
+        if action == 0 and row > 0: # Up
+            row -= 1      
+        elif action == 1 and row < 3: # Down
+            row += 1    
+        elif action == 2 and col > 0: # Left
+            col -= 1    
+        elif action == 3 and col < 3: # Right
+            col += 1    
+
+        return row * 4 + col
+    
+    # This function gets the reward based on moves made
+    def _get_reward(self, next_state, world):
+        # punish invalid move
+        if next_state == self.current_pos:
+            return -5
+
+        reward = 0
+
+        # small step penalty to prevents looping
+        reward -= 0.1
+
+        graph = world.get_map()
+
+        # travel cost
+        reward -= graph[self.current_pos, next_state]
+
+        # reward for the correct parking lot
+        if next_state == self.target_lot:
+            reward += 1000
+
+        # smaller reward for other parking lots
+        elif world.is_parking_lot(next_state):
+            cost = world.get_cost_for_lot(next_state)
+            reward += 100 - cost * 50
+
+        return reward
+        
+    # This function updates the q table based on reward recieved
+    def _update_q(self, state, action, reward, next_state):
+        best_next = np.max(self.q_table[next_state])
+
+        self.q_table[state][action] += self.alpha * (
+            reward + self.gamma * best_next - self.q_table[state][action]
+        )
+
+    # This function has the agent act according the Q-Learning Formula
+    def act_q_learning(self, world: World) -> bool:
+        print(f"Agent current position = {self.current_pos}")
+
+        self._compute_distances(world)
+        self._find_lot(world)
+
+        action = self._choose_action()
+        next_state = self._take_action(action)
+        reward = self._get_reward(next_state, world)
+
+        self._update_q(self.current_pos, action, reward, next_state)
+
+        self.current_pos = next_state
+
+        print(f"Target lot = {self.target_lot}")
+        print(f"Moved to {self.current_pos}, reward = {reward} \n\n")
+
+        return False
+    

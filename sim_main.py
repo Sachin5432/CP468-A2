@@ -13,7 +13,8 @@ if __name__ == '__main__':
 
     print(f"[{datetime.datetime.now().astimezone()}] Simulation started.")
     while True:
-        agent.act(world)
+        #agent.act(world) # Uses dijkstra's algorithm
+        agent.act_q_learning(world) # Uses q-learning
         if agent.finished():
             print(f"[{datetime.datetime.now().astimezone()}] Agent finished.")
             break
