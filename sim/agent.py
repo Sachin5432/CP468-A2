@@ -12,6 +12,8 @@ class Agent(object):
     current_pos: np.int32
     target_lot: np.int32
     destination: int
+    prev_pos: np.int32 | None
+
     _max_walking_dist: float
     _distance_to_target: np.float64
     _curr_path: list[np.int32]
@@ -19,7 +21,21 @@ class Agent(object):
     _dijkstra_output: Any
     _unweighted_distance: Any
 
-    def __init__(self, start=0, dest=15, max_walking_dist=2.0):
+    # q-learning hyper-parameters
+    _alpha: float
+    _gamma: float
+    _q_table: np.ndarray
+    _q_iterations: int
+
+    # epsilon greedy parameters
+    _epsilon: float
+    _epsilon_min: float
+    _epsilon_decay: float
+
+    # performance and feedback
+    _num_steps: int
+
+    def __init__(self, start=0, dest=15, max_walking_dist=2.0, alpha=0.1, gamma=0.9, q_iterations=5, epsilon=0.9, epsilon_min=0.05, epsilon_decay=0.995):
         self.current_pos: np.int32 = np.int32(start)
         self.target_lot: np.int32 = np.int32(0)
         self.destination: int = dest
@@ -31,15 +47,20 @@ class Agent(object):
         self._unweighted_distance = None
 
         # Q-Learning variables
-        self.q_table = np.zeros((16, 4))  # 16 states, 4 actions
+        self._q_table = np.zeros((16, 4))  # 16 states, 4 actions
         self.prev_pos = None
 
-        self.alpha = 0.1
-        self.gamma = 0.9
+        self._alpha = alpha
+        self._gamma = gamma
+        self._q_iterations = q_iterations
 
-        self.epsilon = 1.0
-        self.epsilon_min = 0.05
-        self.epsilon_decay = 0.995
+        # Epsilon greedy
+        self._epsilon = epsilon
+        self._epsilon_min = epsilon_min
+        self._epsilon_decay = epsilon_decay
+
+        # performance feedback
+        self._num_steps = 0
 
     def act(self, world: World) -> bool:
         """
@@ -73,6 +94,44 @@ class Agent(object):
 
         return False
 
+    # This function has the agent act according the Q-Learning Formula
+    def act_q_learning(self, world: World) -> bool:
+        """
+        This function has the agent act according the Q-Learning Formula.
+
+        :param world: World object containing all information about the environment.
+        """
+        print(f"[{datetime.datetime.now().astimezone()}] Agent current position = {self.current_pos}")
+
+        self._compute_distances(world)
+        self._find_lot(world)
+
+        next_state = 0
+        reward = 0
+        for n in range(self._q_iterations):
+            # checking what multiple q-learning iterations does
+            l1 = self._epsilon * (self._epsilon_decay ** n)
+            epsilon = l1 if l1 > self._epsilon_min else self._epsilon_min
+            action = self._choose_action(epsilon)
+            next_state = self._take_action(action)
+            reward = self._get_reward(next_state, world)
+
+            self._update_q(self.current_pos, action, reward, next_state)
+
+            # if self._epsilon > self._epsilon_min:
+            #     self._epsilon *= self._epsilon_decay
+
+        self.prev_pos = self.current_pos  # set the previous position to the current position before moving
+        self.current_pos = next_state
+        self._num_steps += 1
+
+        print(f"[{datetime.datetime.now().astimezone()}] Target lot = {self.target_lot}")
+        print(f"[{datetime.datetime.now().astimezone()}] Moved to node = {self.current_pos}")
+        # print(f"[{datetime.datetime.now().astimezone()}] Reward = {reward}")
+        print(f"[{datetime.datetime.now().astimezone()}] Steps taken = {self._num_steps}")
+
+        return self.current_pos == self.target_lot
+
     def finished(self):
         return self.current_pos == self.target_lot
 
@@ -92,6 +151,7 @@ class Agent(object):
         self._street_bfo = csgraph.breadth_first_order(map_copy, self.destination, directed=True)[0]
 
         # determine the shortest path and distance from current_pos to all other nodes for the car.
+        # for a small network
         # O(E log(V))
         # output = (distance: matrix, predecessors: list)
         self._dijkstra_output = csgraph.dijkstra(map_copy,
@@ -148,11 +208,11 @@ class Agent(object):
             print(f"[{datetime.datetime.now().astimezone()}] Found compromise lot at {self.target_lot}.")
 
     # This function chooses a random direction depnding on the Q table    
-    def _choose_action(self):
-        if np.random.rand() < self.epsilon:
+    def _choose_action(self, epsilon):
+        if np.random.rand() < epsilon:
             return np.random.randint(0, 4) # Pick a random direction
 
-        q_values = self.q_table[self.current_pos]
+        q_values = self._q_table[self.current_pos]
         max_value = np.max(q_values)
         best_actions = np.where(q_values == max_value)[0] # Pick the best known option# Pick the best known option
 
@@ -205,34 +265,8 @@ class Agent(object):
         
     # This function updates the q table based on reward recieved
     def _update_q(self, state, action, reward, next_state):
-        best_next = np.max(self.q_table[next_state])
+        best_next = np.max(self._q_table[next_state])
 
-        self.q_table[state][action] += self.alpha * (
-            reward + self.gamma * best_next - self.q_table[state][action]
+        self._q_table[state][action] += self._alpha * (
+                reward + self._gamma * best_next - self._q_table[state][action]
         )
-
-    # This function has the agent act according the Q-Learning Formula
-    def act_q_learning(self, world: World) -> bool:
-        print(f"Agent current position = {self.current_pos}")
-
-        self._compute_distances(world)
-        self._find_lot(world)
-
-        
-
-        action = self._choose_action()
-        next_state = self._take_action(action)
-        reward = self._get_reward(next_state, world)
-
-        self._update_q(self.current_pos, action, reward, next_state)
-
-        self.prev_pos = self.current_pos # set the previous position to the current position before moving
-        self.current_pos = next_state
-
-        print(f"Target lot = {self.target_lot}")
-        print(f"Moved to {self.current_pos}, reward = {reward} \n\n")
-
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
-
-        return self.current_pos == self.target_lot
