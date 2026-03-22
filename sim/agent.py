@@ -1,3 +1,4 @@
+import copy
 import datetime
 from typing import Any
 
@@ -134,6 +135,9 @@ class Agent(object):
 
     def finished(self):
         return self.current_pos == self.target_lot
+
+    def get_steps_taken(self):
+        return copy.copy(self._num_steps)
 
     def _compute_distances(self, world: World):
         """
