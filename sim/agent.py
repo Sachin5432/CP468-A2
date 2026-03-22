@@ -200,7 +200,7 @@ class Agent(object):
 
     # This function has the agent act according the Q-Learning Formula
     def act_q_learning(self, world: World) -> bool:
-        print(f"Agent current position = {self.current_pos}")
+        print(f"[{datetime.datetime.now().astimezone()}] Agent current position = {self.current_pos}")
 
         self._compute_distances(world)
         self._find_lot(world)
@@ -213,8 +213,8 @@ class Agent(object):
 
         self.current_pos = next_state
 
-        print(f"Target lot = {self.target_lot}")
-        print(f"Moved to {self.current_pos}, reward = {reward} \n\n")
+        print(f"[{datetime.datetime.now().astimezone()}] Target lot = {self.target_lot}")
+        print(f"[{datetime.datetime.now().astimezone()}] Moved to {self.current_pos}")
+        print(f"[{datetime.datetime.now().astimezone()}] Reward = {reward}")
 
         return False
-    
