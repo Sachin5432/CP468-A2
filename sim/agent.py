@@ -32,9 +32,14 @@ class Agent(object):
 
         # Q-Learning variables
         self.q_table = np.zeros((16, 4))  # 16 states, 4 actions
+        self.prev_pos = None
+
         self.alpha = 0.1
         self.gamma = 0.9
-        self.epsilon = 0.2
+
+        self.epsilon = 1.0
+        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.995
 
     def act(self, world: World) -> bool:
         """
@@ -142,11 +147,16 @@ class Agent(object):
             self.target_lot = [iii for iii in self._street_bfo if world.is_parking_lot(iii)][0]
             print(f"[{datetime.datetime.now().astimezone()}] Found compromise lot at {self.target_lot}.")
 
-    # This function chooses a random direction depnding on the Q table
+    # This function chooses a random direction depnding on the Q table    
     def _choose_action(self):
-        if np.random.rand() < self.epsilon: 
+        if np.random.rand() < self.epsilon:
             return np.random.randint(0, 4) # Pick a random direction
-        return np.argmax(self.q_table[self.current_pos]) # Pick the best known option
+
+        q_values = self.q_table[self.current_pos]
+        max_value = np.max(q_values)
+        best_actions = np.where(q_values == max_value)[0] # Pick the best known option# Pick the best known option
+
+        return np.random.choice(best_actions)
     
     # This function has the agent takes an action depending on input
     def _take_action(self, action):
@@ -179,9 +189,12 @@ class Agent(object):
         # travel cost
         reward -= graph[self.current_pos, next_state]
 
+        if self.prev_pos is not None and next_state == self.prev_pos:
+            reward -= 3  # tune this value
+
         # reward for the correct parking lot
         if next_state == self.target_lot:
-            reward += 1000
+            reward += 200
 
         # smaller reward for other parking lots
         elif world.is_parking_lot(next_state):
@@ -205,16 +218,21 @@ class Agent(object):
         self._compute_distances(world)
         self._find_lot(world)
 
+        
+
         action = self._choose_action()
         next_state = self._take_action(action)
         reward = self._get_reward(next_state, world)
 
         self._update_q(self.current_pos, action, reward, next_state)
 
+        self.prev_pos = self.current_pos # set the previous position to the current position before moving
         self.current_pos = next_state
 
         print(f"Target lot = {self.target_lot}")
         print(f"Moved to {self.current_pos}, reward = {reward} \n\n")
 
-        return False
-    
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+        return self.current_pos == self.target_lot
